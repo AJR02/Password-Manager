@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Secure Password Vault</title>
+    <style>
+        /* ===== THEME: Midnight + Emerald (restyled, same structure & logic) ===== */
+        :root {
+            --primary: #10b981;
+            --primary-hover: #059669;
+            --bg-main: #0b1020;
+            --sidebar-bg: #111827;
+            --sidebar-hover: #1f2937;
+            --card-bg: #151c2e;
+            --text-main: #e5e7eb;
+            --text-muted: #94a3b8;
+            --border: #263045;
+            --danger: #f43f5e;
+            --success: #34d399;
+            --glow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+        }
+
+        * { box-sizing: border-box; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2b3650; border-radius: 8px; }
+
+        body {
+            font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; padding: 16px;
+            background:
+                radial-gradient(circle at 15% 10%, rgba(16, 185, 129, 0.12), transparent 40%),
+                radial-gradient(circle at 85% 90%, rgba(99, 102, 241, 0.14), transparent 45%),
+                var(--bg-main);
+            color: var(--text-main);
+            display: flex; height: 100vh; overflow: hidden;
+        }
+
+        .hidden { display: none !important; }
+
+        /* --- Lock Screen --- */
+        #lock-screen {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(16, 185, 129, 0.18), transparent 45%),
+                radial-gradient(circle at 80% 80%, rgba(99, 102, 241, 0.18), transparent 45%),
+                var(--bg-main);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1000;
+        }
+
+        .lock-card {
+            background: var(--card-bg); padding: 3rem 2.5rem; border-radius: 24px;
+            border: 1px solid var(--border);
+            box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.6), 0 0 80px -20px rgba(16, 185, 129, 0.35);
+            width: 100%; max-width: 400px; text-align: center;
+        }
+
+        /* --- Layout --- */
+        #app-layout { display: flex; width: 100%; height: 100%; gap: 16px; }
+
+        /* --- Sidebar (floating panel) --- */
+        .sidebar {
+            width: 270px;
+            background: linear-gradient(180deg, #131b2e 0%, #0e1424 100%);
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            display: flex; flex-direction: column; flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .sidebar-logo {
+            padding: 1.5rem 1.5rem 1rem; font-size: 1.3rem; font-weight: 800;
+            letter-spacing: 0.5px;
+            display: flex; align-items: center; gap: 0.5rem;
+            color: #ecfdf5;
+        }
+
+        .user-profile {
+            display: flex; align-items: center; gap: 0.9rem;
+            margin: 0 1rem 0.75rem; padding: 0.9rem 1rem;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .user-avatar {
+            width: 42px; height: 42px; border-radius: 12px;
+            background: linear-gradient(135deg, #10b981, #06b6d4);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 0.9rem; color: #04130d;
+        }
+
+        .user-name { font-weight: 600; font-size: 0.9rem; }
+
+        .nav-menu { flex: 1; padding: 0.5rem 0; overflow-y: auto; }
+
+        .nav-item {
+            margin: 0.2rem 0.75rem; padding: 0.8rem 1rem; cursor: pointer;
+            display: flex; align-items: center; gap: 0.9rem;
+            border-radius: 12px;
+            transition: background 0.2s, color 0.2s, transform 0.2s;
+            font-weight: 500; color: #a8b3c7;
+        }
+
+        .nav-item:hover { background-color: var(--sidebar-hover); color: white; transform: translateX(3px); }
+        .nav-item.active {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            box-shadow: inset 3px 0 0 var(--primary);
+        }
+        .nav-icon { font-size: 1.15rem; }
+
+        .sidebar-footer {
+            padding: 1rem 1.25rem 1.25rem; border-top: 1px solid var(--border);
+            font-size: 0.8rem; color: var(--text-muted);
+        }
+
+        .footer-info { margin-bottom: 0.5rem; display: flex; justify-content: space-between; }
+
+        .logout-btn {
+            margin-top: 1rem; padding: 0.75rem; border-radius: 999px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+            background: rgba(244, 63, 94, 0.12); color: #fb7185; font-weight: 600;
+            border: 1px solid rgba(244, 63, 94, 0.25);
+            transition: background 0.2s;
+        }
+        .logout-btn:hover { background: rgba(244, 63, 94, 0.22); }
+
+        /* --- Main Content (rounded panel) --- */
+        .main-content {
+            flex: 1; padding: 2rem 2.5rem; overflow-y: auto;
+            display: flex; flex-direction: column; position: relative;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+        }
+
+        .page-view { display: none; animation: fadeIn 0.35s ease; }
+        .page-view.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+        .page-header {
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 1rem;
+            margin-bottom: 1.5rem; padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h1, h2, h3 { margin: 0; color: var(--text-main); }
+        h1 { font-weight: 800; letter-spacing: -0.5px; font-size: 1.9rem; }
+
+        /* --- Buttons & Inputs --- */
+        button {
+            padding: 0.6rem 1.3rem; border-radius: 999px; border: none;
+            font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.95rem;
+            display: inline-flex; align-items: center; gap: 0.5rem; justify-content: center;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #04130d;
+            box-shadow: 0 6px 18px -6px rgba(16, 185, 129, 0.6);
+        }
+        .btn-primary:hover { background: linear-gradient(135deg, #34d399, #10b981); transform: translateY(-1px); }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
+        .btn-outline:hover { background: rgba(255, 255, 255, 0.06); }
+        .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+
+        input, textarea {
+            padding: 0.8rem 1rem; border: 1px solid var(--border); border-radius: 12px;
+            font-size: 1rem; outline: none; width: 100%; font-family: inherit;
+            background: #0e1527; color: var(--text-main);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input::placeholder, textarea::placeholder { color: #5b6a85; }
+        input:focus, textarea:focus { border-color: var(--primary); box-shadow: var(--glow); }
+        input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        /* --- Card Grid --- */
+        .card-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 1.25rem; margin-top: 1.25rem;
+        }
+
+        .vault-card {
+            background: var(--card-bg); border: 1px solid var(--border);
+            border-top: 3px solid var(--primary);
+            border-radius: 16px; padding: 1.4rem;
+            box-shadow: 0 10px 25px -15px rgba(0, 0, 0, 0.7);
+            transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
+            display: flex; flex-direction: column;
+        }
+        .vault-card:hover {
+            transform: translateY(-6px);
+            border-color: rgba(16, 185, 129, 0.5);
+            box-shadow: 0 18px 35px -15px rgba(16, 185, 129, 0.35);
+        }
+
+        .card-header { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 1rem; }
+
+        .avatar {
+            width: 42px; height: 42px; border-radius: 50%; color: white;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 1.15rem; text-transform: uppercase;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08); flex-shrink: 0;
+        }
+
+        .domain-name { font-weight: 600; font-size: 1.05rem; word-break: break-word; }
+
+        .card-body {
+            background: var(--bg-main); padding: 0.75rem 1rem;
+            border-radius: 10px; border: 1px dashed var(--border);
+            margin-bottom: 1rem; font-family: "Cascadia Code", Consolas, monospace;
+            font-size: 0.95rem; letter-spacing: 1px;
+            display: flex; justify-content: space-between; word-break: break-all;
+            color: #a7f3d0;
+        }
+
+        .card-actions { display: flex; gap: 0.5rem; margin-top: auto; }
+        .btn-icon {
+            flex: 1; padding: 0.5rem; font-size: 0.85rem;
+            background: transparent; color: var(--text-main); border: 1px solid var(--border);
+        }
+        .btn-icon:hover { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.4); }
+        .btn-del:hover { background: rgba(244, 63, 94, 0.15); color: #fb7185; border-color: rgba(244, 63, 94, 0.4); }
+
+        /* --- Dashboard --- */
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        .stat-card {
+            background: linear-gradient(160deg, #18213a, #121a2e);
+            padding: 2rem; border-radius: 18px; border: 1px solid var(--border);
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 3.2rem; font-weight: 800; margin: 1rem 0;
+            background: linear-gradient(135deg, #34d399, #22d3ee);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent; color: transparent;
+        }
+
+        /* --- Modal System --- */
+        #modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(3, 7, 18, 0.7); backdrop-filter: blur(6px);
+            display: flex; align-items: center; justify-content: center; z-index: 2000;
+            opacity: 0; pointer-events: none; transition: opacity 0.2s;
+        }
+        #modal-overlay.active { opacity: 1; pointer-events: auto; }
+
+        .modal-box {
+            background: var(--card-bg); color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 2rem; border-radius: 22px;
+            width: 100%; max-width: 450px;
+            box-shadow: 0 30px 70px -15px rgba(0, 0, 0, 0.7), 0 0 60px -20px rgba(16, 185, 129, 0.35);
+            transform: translateY(20px) scale(0.98); transition: transform 0.2s;
+        }
+        #modal-overlay.active .modal-box { transform: translateY(0) scale(1); }
+
+        .form-group { margin-bottom: 1rem; }
+        .form-group label {
+            display: block; margin-bottom: 0.5rem; font-size: 0.8rem; font-weight: 700;
+            color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px;
+        }
+
+        .modal-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem; }
+
+        .toast-msg {
+            position: fixed; bottom: 24px; right: 24px;
+            background: #0f2a22; color: var(--success);
+            padding: 0.9rem 1.2rem; border-radius: 12px; border: 1px solid rgba(52, 211, 153, 0.4);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s; opacity: 0; pointer-events: none; font-weight: 600;
+            z-index: 3000;
+        }
+        .toast-msg.show { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <!-- LOCK SCREEN -->
+    <div id="lock-screen">
+        <div class="lock-card">
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔐</h1>
+            <h2>Unlock Vault</h2>
+            <p style="color: var(--text-muted); margin-bottom: 2rem;">Enter your master password to access your secure data.</p>
+            <input type="password" id="master-password" placeholder="Master Password">
+            <button class="btn-primary" style="width: 100%; margin-top: 1rem;" onclick="unlockVault()">Unlock</button>
+            <p id="lock-error" style="color: var(--danger); font-weight: 500; margin-top: 1rem;"></p>
+        </div>
+    </div>
+
+    <!-- APP LAYOUT -->
+    <div id="app-layout" class="hidden">
+        
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <div class="sidebar-logo">🔐 SecureVault</div>
+            
+            <div class="user-profile">
+                <div class="user-avatar">CN</div>
+                <div class="user-name">CipherNest</div>
+            </div>
+
+            <div class="nav-menu">
+                <div class="nav-item active" onclick="switchPage('vault', this)"><span class="nav-icon">🗂️</span> Passwords</div>
+                <div class="nav-item" onclick="switchPage('notes', this)"><span class="nav-icon">📝</span> Secure Notes</div>
+                <div class="nav-item" onclick="switchPage('sharing', this)"><span class="nav-icon">🤝</span> Sharing Center</div>
+                <div class="nav-item" onclick="switchPage('dashboard', this)"><span class="nav-icon">📊</span> Security Dashboard</div>
+                <div class="nav-item" onclick="switchPage('contacts', this)"><span class="nav-icon">👨‍⚕️</span> Emergency Contacts</div>
+                <div class="nav-item" onclick="switchPage('trash', this)"><span class="nav-icon">🗑️</span> Trash</div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <div class="footer-info">
+                    <span>🕒 Time:</span>
+                    <span id="live-clock">--:--:--</span>
+                </div>
+                <div class="footer-info">
+                    <span>🔑 Last Login:</span>
+                    <span id="last-login">Never</span>
+                </div>
+                <div class="logout-btn" onclick="lockVault()">
+                    <span>🚪</span> Lock Vault
+                </div>
+            </div>
+        </div>
+
+        <!-- CONTENT AREA -->
+        <div class="main-content">
+            
+            <!-- PAGE: PASSWORDS -->
+            <div id="page-vault" class="page-view active">
+                <div class="page-header">
+                    <h1>Password Vault</h1>
+                    <button class="btn-primary" onclick="openModal('add-password')">➕ Add Password</button>
+                </div>
+                <div id="vault-entries" class="card-grid"></div>
+            </div>
+
+            <!-- PAGE: NOTES -->
+            <div id="page-notes" class="page-view">
+                <div class="page-header">
+                    <h1>Secure Notes</h1>
+                    <button class="btn-primary" onclick="openModal('add-note')">➕ Add Note</button>
+                </div>
+                <div id="note-entries" class="card-grid"></div>
+            </div>
+
+            <!-- PAGE: SHARING -->
+            <div id="page-sharing" class="page-view">
+                <div class="page-header">
+                    <h1>Sharing Center</h1>
+                    <button class="btn-primary" onclick="openModal('add-share')">➕ Share Item</button>
+                </div>
+                <div id="share-entries" class="card-grid"></div>
+            </div>
+
+            <!-- PAGE: DASHBOARD -->
+            <div id="page-dashboard" class="page-view">
+                <div class="page-header"><h1>Security Dashboard</h1></div>
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <h3>Overall Security Score</h3>
+                        <div class="stat-value" id="security-score">72%</div>
+                        <p style="color:var(--text-muted)">Fair. Two passwords are old. Change them to improve your score.</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Stored Items</h3>
+                        <div class="stat-value" id="stat-vault-count">0</div>
+                        <p style="color:var(--text-muted)">Passwords actively secured.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE: CONTACTS -->
+            <div id="page-contacts" class="page-view">
+                <div class="page-header">
+                    <h1>Emergency Contacts</h1>
+                    <button class="btn-primary" onclick="openModal('add-contact')">➕ Add Contact</button>
+                </div>
+                <p style="color:var(--text-muted); margin-bottom: 1.5rem;">These users can request emergency access to your vault if you are incapacitated.</p>
+                <div id="contact-entries" class="card-grid"></div>
+            </div>
+
+            <!-- PAGE: TRASH -->
+            <div id="page-trash" class="page-view">
+                <div class="page-header">
+                    <h1>Trash</h1>
+                    <button class="btn-outline" onclick="emptyTrash()">Empty Trash</button>
+                </div>
+                <div id="trash-entries" class="card-grid"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- UNIVERSAL MODAL -->
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h2 id="modal-title" style="margin-bottom: 1.5rem;">Title</h2>
+            <div id="modal-fields"></div>
+            <div class="modal-actions">
+                <button class="btn-outline" onclick="closeModal()">Cancel</button>
+                <button class="btn-primary" onclick="submitModal()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast-msg">Saved!</div>
+
+    <script>
+        "use strict";
+
+        /********* BACKEND: Cryptography ********/
+        const stringToBuffer = str => new TextEncoder().encode(str);
+        const bufferToString = buf => new TextDecoder().decode(buf);
+        const encodeBuffer = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const decodeBuffer = str => Uint8Array.from(atob(str), c => c.charCodeAt(0));
+        const getRandomBytes = len => window.crypto.getRandomValues(new Uint8Array(len));
+        const subtle = window.crypto.subtle;
+
+        const PBKDF2_ITERATIONS = 100000, MAX_PASSWORD_LENGTH = 64;
+        const SALT_LENGTH = 16, IV_LENGTH = 12, RECORD_LENGTH = MAX_PASSWORD_LENGTH + 1;
+        const HMAC_SUBKEY_LABEL = "hmac-domain-key", AES_SUBKEY_LABEL = "aes-gcm-value-key";
+        const PASSWORD_CHECK_PLAINTEXT = "password-manager-verification-sentinel";
+
+        class Keychain {
+            constructor(hmacKey, aesKey, salt, kvs, passwordCheck) {
+                this.data = { kvs: kvs || {}, salt: salt, passwordCheck: passwordCheck };
+                this.secrets = { hmacKey: hmacKey, aesKey: aesKey };
+            }
+            static async deriveKeys(password, saltBuffer) {
+                const rawKey = await subtle.importKey("raw", stringToBuffer(password), "PBKDF2", false, ["deriveKey", "deriveBits"]);
+                const masterKey = await subtle.deriveKey({ name: "PBKDF2", salt: saltBuffer, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" }, rawKey, { name: "HMAC", hash: "SHA-256", length: 256 }, false, ["sign"]);
+                const hmacKeyBits = await subtle.sign("HMAC", masterKey, stringToBuffer(HMAC_SUBKEY_LABEL));
+                const aesKeyBits = await subtle.sign("HMAC", masterKey, stringToBuffer(AES_SUBKEY_LABEL));
+                const hmacKey = await subtle.importKey("raw", hmacKeyBits, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+                const aesKey = await subtle.importKey("raw", aesKeyBits.slice(0, 32), "AES-GCM", false, ["encrypt", "decrypt"]);
+                return { hmacKey, aesKey };
+            }
+            async domainTag(name) { return encodeBuffer(await subtle.sign("HMAC", this.secrets.hmacKey, stringToBuffer(name))); }
+            static async init(password) {
+                const salt = getRandomBytes(SALT_LENGTH);
+                const { hmacKey, aesKey } = await Keychain.deriveKeys(password, salt);
+                const iv = getRandomBytes(IV_LENGTH);
+                const ctBuffer = await subtle.encrypt({ name: "AES-GCM", iv: iv }, aesKey, stringToBuffer(PASSWORD_CHECK_PLAINTEXT));
+                return new Keychain(hmacKey, aesKey, encodeBuffer(salt), {}, { iv: encodeBuffer(iv), ciphertext: encodeBuffer(ctBuffer) });
+            }
+            static async load(password, repr, trustedDataCheck) {
+                if (trustedDataCheck) {
+                    const computed = await subtle.digest("SHA-256", stringToBuffer(repr));
+                    if (encodeBuffer(computed) !== trustedDataCheck) throw new Error("Integrity check failed.");
+                }
+                const parsed = JSON.parse(repr);
+                const { hmacKey, aesKey } = await Keychain.deriveKeys(password, decodeBuffer(parsed.salt));
+                try {
+                    const pc = parsed.passwordCheck;
+                    const plain = await subtle.decrypt({ name: "AES-GCM", iv: decodeBuffer(pc.iv) }, aesKey, decodeBuffer(pc.ciphertext));
+                    if (bufferToString(plain) !== PASSWORD_CHECK_PLAINTEXT) throw new Error("Mismatch");
+                } catch (e) { throw new Error("Incorrect master password."); }
+                return new Keychain(hmacKey, aesKey, parsed.salt, parsed.kvs, parsed.passwordCheck);
+            }
+            async dump() {
+                const repr = JSON.stringify(this.data);
+                return [repr, encodeBuffer(await subtle.digest("SHA-256", stringToBuffer(repr)))];
+            }
+            async get(name) {
+                const tag = await this.domainTag(name);
+                if (!this.data.kvs[tag]) return null;
+                const rec = this.data.kvs[tag];
+                const plainBuffer = await subtle.decrypt({ name: "AES-GCM", iv: decodeBuffer(rec.iv), additionalData: stringToBuffer(tag) }, this.secrets.aesKey, decodeBuffer(rec.ciphertext));
+                const bytes = new Uint8Array(plainBuffer);
+                return bufferToString(bytes.slice(1, 1 + bytes[0]));
+            }
+            async set(name, value) {
+                const tag = await this.domainTag(name);
+                const valueBytes = stringToBuffer(value);
+                const out = new Uint8Array(RECORD_LENGTH);
+                out[0] = valueBytes.length; out.set(valueBytes, 1);
+                
+                const iv = getRandomBytes(IV_LENGTH);
+                const ctBuffer = await subtle.encrypt({ name: "AES-GCM", iv: iv, additionalData: stringToBuffer(tag) }, this.secrets.aesKey, out);
+                this.data.kvs[tag] = { iv: encodeBuffer(iv), ciphertext: encodeBuffer(ctBuffer) };
+            }
+            async remove(name) {
+                const tag = await this.domainTag(name);
+                if (!this.data.kvs[tag]) return false;
+                delete this.data.kvs[tag]; return true;
+            }
+        }
+
+        /********* FRONTEND STATE ********/
+        let currentKeychain = null;
+        let currentDomains = [];
+        let trashedDomains = [];
+        let visiblePasswords = {};
+        
+        // New Mock Data Arrays for other pages
+        let currentNotes = JSON.parse(localStorage.getItem('vault_notes')) || [
+            { id: '1', title: 'Lab Server Login', content: 'Host: 192.168.1.20\nUser: student10\nSSH key: ~/.ssh/id_rsa' },
+            { id: '2', title: 'Class Team Link', content: 'Meeting: meet.example.com/g10\nRepo: github.com/g10/capstone' },
+            { id: '3', title: 'Locker Combination', content: 'Right 37, Left 9, Right 2' }
+        ];
+        let currentShares = JSON.parse(localStorage.getItem('vault_shares')) || [
+            { id: '1', item: 'Capstone GitHub Repo', user: 'Wandibba' },
+            { id: '2', item: 'Lab Wi-Fi Login', user: 'Joy' }
+        ];
+        let currentContacts = JSON.parse(localStorage.getItem('vault_contacts')) || [
+            { id: '1', name: 'Dad', relation: 'Parent • Emergency Access (3 Days)' },
+            { id: '2', name: 'Caleb', relation: 'Sibling • View Only (12 Days)' },
+            { id: '3', name: 'Chiama', relation: 'Close Friend • Backup Contact (7 Days)' }
+        ];
+
+        const colorPalette = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#14b8a6', '#0ea5e9', '#3b82f6', '#6366f1', '#a855f7'];
+        const getColor = (str) => {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            return colorPalette[Math.abs(hash) % colorPalette.length];
+        };
+
+        // --- UI Utilities ---
+        function showToast(msg) {
+            const el = document.getElementById('toast');
+            el.innerText = msg; el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3000);
+        }
+
+        function switchPage(pageId, element) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            if (element) element.classList.add('active');
+            document.querySelectorAll('.page-view').forEach(el => el.classList.remove('active'));
+            document.getElementById(`page-${pageId}`).classList.add('active');
+            if (pageId === 'dashboard') document.getElementById('stat-vault-count').innerText = currentDomains.length;
+        }
+
+        // --- Live Clock & Login Tracker ---
+        setInterval(() => {
+            document.getElementById('live-clock').innerText = new Date().toLocaleTimeString();
+        }, 1000);
+
+        function updateLastLogin() {
+            const now = new Date().toLocaleString();
+            localStorage.setItem('last_login', now);
+            document.getElementById('last-login').innerText = now.split(',')[0]; // Just show date to save space
+        }
+
+        // --- MODAL SYSTEM ---
+        let currentModalAction = null; // 'add-password', 'edit-password', 'add-note', etc.
+        let currentEditTarget = null; // Holds the ID or domain of the item being edited
+
+        function openModal(action, targetData = null) {
+            currentModalAction = action;
+            currentEditTarget = targetData;
+            const overlay = document.getElementById('modal-overlay');
+            const title = document.getElementById('modal-title');
+            const fields = document.getElementById('modal-fields');
+            fields.innerHTML = ''; // Clear previous inputs
+
+            if (action === 'add-password' || action === 'edit-password') {
+                title.innerText = action === 'add-password' ? 'Add Password' : 'Edit Password';
+                fields.innerHTML = `
+                    <div class="form-group"><label>Domain</label><input type="text" id="m-domain" value="${targetData ? targetData.domain : ''}" ${action === 'edit-password' ? 'disabled' : ''}></div>
+                    <div class="form-group"><label>Password</label><input type="text" id="m-password" value="${targetData ? targetData.password : ''}"></div>
+                `;
+            } 
+            else if (action === 'add-note' || action === 'edit-note') {
+                title.innerText = action === 'add-note' ? 'Add Note' : 'Edit Note';
+                fields.innerHTML = `
+                    <div class="form-group"><label>Title</label><input type="text" id="m-title" value="${targetData ? targetData.title : ''}"></div>
+                    <div class="form-group"><label>Content</label><textarea id="m-content" rows="4">${targetData ? targetData.content : ''}</textarea></div>
+                `;
+            }
+            else if (action === 'add-share' || action === 'edit-share') {
+                title.innerText = action === 'add-share' ? 'Share an Item' : 'Edit Share';
+                fields.innerHTML = `
+                    <div class="form-group"><label>Item Name</label><input type="text" id="m-item" value="${targetData ? targetData.item : ''}"></div>
+                    <div class="form-group"><label>Shared With</label><input type="text" id="m-user" value="${targetData ? targetData.user : ''}"></div>
+                `;
+            }
+            else if (action === 'add-contact' || action === 'edit-contact') {
+                title.innerText = action === 'add-contact' ? 'Add Contact' : 'Manage Contact';
+                fields.innerHTML = `
+                    <div class="form-group"><label>Name</label><input type="text" id="m-name" value="${targetData ? targetData.name : ''}"></div>
+                    <div class="form-group"><label>Relationship / Access Level</label><input type="text" id="m-relation" value="${targetData ? targetData.relation : 'Emergency Access (7 Days)'}"></div>
+                `;
+            }
+
+            overlay.classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').classList.remove('active');
+            currentModalAction = null;
+            currentEditTarget = null;
+        }
+
+        async function submitModal() {
+            if (currentModalAction === 'add-password' || currentModalAction === 'edit-password') {
+                const dom = document.getElementById('m-domain').value.trim();
+                const pwd = document.getElementById('m-password').value;
+                if (!dom || !pwd) return;
+                await currentKeychain.set(dom, pwd);
+                if (currentModalAction === 'add-password' && !currentDomains.includes(dom)) currentDomains.push(dom);
+                renderPasswords();
+                saveStateToLocalStorage();
+                showToast('Password saved securely.');
+            }
+            else if (currentModalAction.includes('note')) {
+                const t = document.getElementById('m-title').value;
+                const c = document.getElementById('m-content').value;
+                if (currentModalAction === 'add-note') currentNotes.push({ id: Date.now().toString(), title: t, content: c });
+                else currentEditTarget.title = t, currentEditTarget.content = c;
+                renderNotes();
+            }
+            else if (currentModalAction.includes('share')) {
+                const i = document.getElementById('m-item').value;
+                const u = document.getElementById('m-user').value;
+                if (currentModalAction === 'add-share') currentShares.push({ id: Date.now().toString(), item: i, user: u });
+                else currentEditTarget.item = i, currentEditTarget.user = u;
+                renderShares();
+            }
+            else if (currentModalAction.includes('contact')) {
+                const n = document.getElementById('m-name').value;
+                const r = document.getElementById('m-relation').value;
+                if (currentModalAction === 'add-contact') currentContacts.push({ id: Date.now().toString(), name: n, relation: r });
+                else currentEditTarget.name = n, currentEditTarget.relation = r;
+                renderContacts();
+            }
+            saveStateToLocalStorage();
+            closeModal();
+        }
+
+        // --- CRUD Actions ---
+        async function unlockVault() {
+            const pwd = document.getElementById('master-password').value;
+            const diskData = localStorage.getItem('vault_repr');
+            const diskHash = localStorage.getItem('vault_hash');
+
+            try {
+                if (diskData && diskHash) {
+                    currentKeychain = await Keychain.load(pwd, diskData, diskHash);
+                    if (localStorage.getItem('vault_domains')) currentDomains = JSON.parse(localStorage.getItem('vault_domains'));
+                } else {
+                    currentKeychain = await Keychain.init(pwd);
+                    // Example entries for a brand-new vault
+                    const examples = [
+                        ['github.com', '1234!'],
+                        ['strathmore.edu', 'Str@thm0re'],
+                        ['spotify.com', 'Spot@fy']
+                    ];
+                    for (const [d, p] of examples) {
+                        await currentKeychain.set(d, p);
+                        currentDomains.push(d);
+                    }
+                    trashedDomains = ['old-forum.net'];
+                    await saveStateToLocalStorage();
+                }
+                document.getElementById('lock-screen').classList.add('hidden');
+                document.getElementById('app-layout').classList.remove('hidden');
+                
+                updateLastLogin();
+                renderAll();
+            } catch (e) { document.getElementById('lock-error').innerText = "Error: " + e.message; }
+        }
+
+        async function editPassword(domain) {
+            const pwd = await currentKeychain.get(domain);
+            openModal('edit-password', { domain: domain, password: pwd });
+        }
+
+        async function moveToTrash(domain) {
+            await currentKeychain.remove(domain);
+            currentDomains = currentDomains.filter(d => d !== domain);
+            trashedDomains.push(domain);
+            renderPasswords(); renderTrash(); saveStateToLocalStorage();
+            showToast('Moved to Trash.');
+        }
+
+        async function restoreFromTrash(domain) {
+            trashedDomains = trashedDomains.filter(d => d !== domain);
+            currentDomains.push(domain);
+            await currentKeychain.set(domain, "restored-password!"); 
+            renderPasswords(); renderTrash(); saveStateToLocalStorage();
+            showToast('Restored from Trash.');
+        }
+
+        function deleteGeneric(type, id) {
+            if (type === 'note') currentNotes = currentNotes.filter(x => x.id !== id);
+            if (type === 'share') currentShares = currentShares.filter(x => x.id !== id);
+            if (type === 'contact') currentContacts = currentContacts.filter(x => x.id !== id);
+            renderAll(); saveStateToLocalStorage();
+            showToast('Item deleted.');
+        }
+
+        function emptyTrash() { trashedDomains = []; renderTrash(); }
+
+        async function togglePassword(domain) { visiblePasswords[domain] = !visiblePasswords[domain]; renderPasswords(); }
+
+        // --- RENDERERS ---
+        function renderAll() {
+            renderPasswords(); renderNotes(); renderShares(); renderContacts(); renderTrash();
+        }
+
+        async function renderPasswords() {
+            const container = document.getElementById('vault-entries');
+            container.innerHTML = '';
+            for (const domain of currentDomains) {
+                let displayPwd = '••••••••••••';
+                if (visiblePasswords[domain]) displayPwd = await currentKeychain.get(domain);
+
+                container.innerHTML += `
+                    <div class="vault-card">
+                        <div class="card-header">
+                            <div class="avatar" style="background:${getColor(domain)}">${domain.charAt(0)}</div>
+                            <div class="domain-name">${domain}</div>
+                        </div>
+                        <div class="card-body"><span>${displayPwd}</span></div>
+                        <div class="card-actions">
+                            <button class="btn-icon" onclick="togglePassword('${domain}')">${visiblePasswords[domain] ? '🙈' : '👁️'}</button>
+                            <button class="btn-icon" onclick="editPassword('${domain}')">✏️ Edit</button>
+                            <button class="btn-icon btn-del" onclick="moveToTrash('${domain}')">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderNotes() {
+            const container = document.getElementById('note-entries');
+            container.innerHTML = currentNotes.map(n => `
+                <div class="vault-card">
+                    <div class="card-header">
+                        <div class="avatar" style="background:${getColor(n.title)}">${n.title.charAt(0)}</div>
+                        <div class="domain-name">${n.title}</div>
+                    </div>
+                    <p style="color:var(--text-muted); font-size:0.9rem; white-space:pre-wrap;">${n.content}</p>
+                    <div class="card-actions" style="margin-top:1rem;">
+                        <button class="btn-icon" onclick='openModal("edit-note", ${JSON.stringify(n)})'>✏️ Edit</button>
+                        <button class="btn-icon btn-del" onclick="deleteGeneric('note', '${n.id}')">🗑️ Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderShares() {
+            const container = document.getElementById('share-entries');
+            container.innerHTML = currentShares.map(s => `
+                <div class="vault-card">
+                    <div class="card-header">
+                        <div class="avatar" style="background:${getColor(s.item)}">🤝</div>
+                        <div class="domain-name">${s.item}</div>
+                    </div>
+                    <p style="color:var(--text-muted); font-size:0.9rem;">Shared with: <strong>${s.user}</strong></p>
+                    <div class="card-actions" style="margin-top:1rem;">
+                        <button class="btn-icon" onclick='openModal("edit-share", ${JSON.stringify(s)})'>✏️ Edit</button>
+                        <button class="btn-icon btn-del" onclick="deleteGeneric('share', '${s.id}')">🗑️ Revoke</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderContacts() {
+            const container = document.getElementById('contact-entries');
+            container.innerHTML = currentContacts.map(c => `
+                <div class="vault-card">
+                    <div class="card-header">
+                        <div class="avatar" style="background:${getColor(c.name)}">${c.name.charAt(0)}</div>
+                        <div class="domain-name">${c.name}</div>
+                    </div>
+                    <p style="color:var(--text-muted); font-size:0.9rem;">${c.relation}</p>
+                    <div class="card-actions" style="margin-top:1rem;">
+                        <button class="btn-icon" style="background:var(--primary); color:white; border:none;" onclick='openModal("edit-contact", ${JSON.stringify(c)})'>⚙️ Manage</button>
+                        <button class="btn-icon btn-del" onclick="deleteGeneric('contact', '${c.id}')">🗑️ Remove</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderTrash() {
+            const container = document.getElementById('trash-entries');
+            if (trashedDomains.length === 0) { container.innerHTML = '<p style="color:var(--text-muted)">Trash is empty.</p>'; return; }
+            container.innerHTML = trashedDomains.map(d => `
+                <div class="vault-card">
+                    <div class="card-header">
+                        <div class="avatar" style="background:${getColor(d)}">${d.charAt(0)}</div>
+                        <div class="domain-name" style="text-decoration: line-through; color: #94a3b8;">${d}</div>
+                    </div>
+                    <div class="card-actions" style="margin-top:1rem;">
+                        <button class="btn-icon" onclick="restoreFromTrash('${d}')">♻️ Restore</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // --- STORAGE ---
+        async function saveStateToLocalStorage() {
+            if (currentKeychain) {
+                const [repr, hash] = await currentKeychain.dump();
+                localStorage.setItem('vault_repr', repr);
+                localStorage.setItem('vault_hash', hash);
+            }
+            localStorage.setItem('vault_domains', JSON.stringify(currentDomains));
+            localStorage.setItem('vault_notes', JSON.stringify(currentNotes));
+            localStorage.setItem('vault_shares', JSON.stringify(currentShares));
+            localStorage.setItem('vault_contacts', JSON.stringify(currentContacts));
+        }
+
+        function lockVault() {
+            currentKeychain = null; currentDomains = []; trashedDomains = []; visiblePasswords = {};
+            document.getElementById('master-password').value = '';
+            document.getElementById('app-layout').classList.add('hidden');
+            document.getElementById('lock-screen').classList.remove('hidden');
+            switchPage('vault', document.querySelector('.nav-item'));
+        }
+
+        // Initialize clock on load
+        document.getElementById('last-login').innerText = localStorage.getItem('last_login') ? localStorage.getItem('last_login').split(',')[0] : 'Never';
+    </script>
+</body>
+</html>
