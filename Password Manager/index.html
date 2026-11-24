@@ -413,86 +413,8 @@
 
     <div id="toast" class="toast-msg">Saved!</div>
 
-    <script>
-        "use strict";
-
-        /********* BACKEND: Cryptography ********/
-        const stringToBuffer = str => new TextEncoder().encode(str);
-        const bufferToString = buf => new TextDecoder().decode(buf);
-        const encodeBuffer = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
-        const decodeBuffer = str => Uint8Array.from(atob(str), c => c.charCodeAt(0));
-        const getRandomBytes = len => window.crypto.getRandomValues(new Uint8Array(len));
-        const subtle = window.crypto.subtle;
-
-        const PBKDF2_ITERATIONS = 100000, MAX_PASSWORD_LENGTH = 64;
-        const SALT_LENGTH = 16, IV_LENGTH = 12, RECORD_LENGTH = MAX_PASSWORD_LENGTH + 1;
-        const HMAC_SUBKEY_LABEL = "hmac-domain-key", AES_SUBKEY_LABEL = "aes-gcm-value-key";
-        const PASSWORD_CHECK_PLAINTEXT = "password-manager-verification-sentinel";
-
-        class Keychain {
-            constructor(hmacKey, aesKey, salt, kvs, passwordCheck) {
-                this.data = { kvs: kvs || {}, salt: salt, passwordCheck: passwordCheck };
-                this.secrets = { hmacKey: hmacKey, aesKey: aesKey };
-            }
-            static async deriveKeys(password, saltBuffer) {
-                const rawKey = await subtle.importKey("raw", stringToBuffer(password), "PBKDF2", false, ["deriveKey", "deriveBits"]);
-                const masterKey = await subtle.deriveKey({ name: "PBKDF2", salt: saltBuffer, iterations: PBKDF2_ITERATIONS, hash: "SHA-256" }, rawKey, { name: "HMAC", hash: "SHA-256", length: 256 }, false, ["sign"]);
-                const hmacKeyBits = await subtle.sign("HMAC", masterKey, stringToBuffer(HMAC_SUBKEY_LABEL));
-                const aesKeyBits = await subtle.sign("HMAC", masterKey, stringToBuffer(AES_SUBKEY_LABEL));
-                const hmacKey = await subtle.importKey("raw", hmacKeyBits, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
-                const aesKey = await subtle.importKey("raw", aesKeyBits.slice(0, 32), "AES-GCM", false, ["encrypt", "decrypt"]);
-                return { hmacKey, aesKey };
-            }
-            async domainTag(name) { return encodeBuffer(await subtle.sign("HMAC", this.secrets.hmacKey, stringToBuffer(name))); }
-            static async init(password) {
-                const salt = getRandomBytes(SALT_LENGTH);
-                const { hmacKey, aesKey } = await Keychain.deriveKeys(password, salt);
-                const iv = getRandomBytes(IV_LENGTH);
-                const ctBuffer = await subtle.encrypt({ name: "AES-GCM", iv: iv }, aesKey, stringToBuffer(PASSWORD_CHECK_PLAINTEXT));
-                return new Keychain(hmacKey, aesKey, encodeBuffer(salt), {}, { iv: encodeBuffer(iv), ciphertext: encodeBuffer(ctBuffer) });
-            }
-            static async load(password, repr, trustedDataCheck) {
-                if (trustedDataCheck) {
-                    const computed = await subtle.digest("SHA-256", stringToBuffer(repr));
-                    if (encodeBuffer(computed) !== trustedDataCheck) throw new Error("Integrity check failed.");
-                }
-                const parsed = JSON.parse(repr);
-                const { hmacKey, aesKey } = await Keychain.deriveKeys(password, decodeBuffer(parsed.salt));
-                try {
-                    const pc = parsed.passwordCheck;
-                    const plain = await subtle.decrypt({ name: "AES-GCM", iv: decodeBuffer(pc.iv) }, aesKey, decodeBuffer(pc.ciphertext));
-                    if (bufferToString(plain) !== PASSWORD_CHECK_PLAINTEXT) throw new Error("Mismatch");
-                } catch (e) { throw new Error("Incorrect master password."); }
-                return new Keychain(hmacKey, aesKey, parsed.salt, parsed.kvs, parsed.passwordCheck);
-            }
-            async dump() {
-                const repr = JSON.stringify(this.data);
-                return [repr, encodeBuffer(await subtle.digest("SHA-256", stringToBuffer(repr)))];
-            }
-            async get(name) {
-                const tag = await this.domainTag(name);
-                if (!this.data.kvs[tag]) return null;
-                const rec = this.data.kvs[tag];
-                const plainBuffer = await subtle.decrypt({ name: "AES-GCM", iv: decodeBuffer(rec.iv), additionalData: stringToBuffer(tag) }, this.secrets.aesKey, decodeBuffer(rec.ciphertext));
-                const bytes = new Uint8Array(plainBuffer);
-                return bufferToString(bytes.slice(1, 1 + bytes[0]));
-            }
-            async set(name, value) {
-                const tag = await this.domainTag(name);
-                const valueBytes = stringToBuffer(value);
-                const out = new Uint8Array(RECORD_LENGTH);
-                out[0] = valueBytes.length; out.set(valueBytes, 1);
-                
-                const iv = getRandomBytes(IV_LENGTH);
-                const ctBuffer = await subtle.encrypt({ name: "AES-GCM", iv: iv, additionalData: stringToBuffer(tag) }, this.secrets.aesKey, out);
-                this.data.kvs[tag] = { iv: encodeBuffer(iv), ciphertext: encodeBuffer(ctBuffer) };
-            }
-            async remove(name) {
-                const tag = await this.domainTag(name);
-                if (!this.data.kvs[tag]) return false;
-                delete this.data.kvs[tag]; return true;
-            }
-        }
+    <script type="module">
+        import { Keychain } from './keychain.js';
 
         /********* FRONTEND STATE ********/
         let currentKeychain = null;
@@ -503,17 +425,17 @@
         // New Mock Data Arrays for other pages
         let currentNotes = JSON.parse(localStorage.getItem('vault_notes')) || [
             { id: '1', title: 'Lab Server Login', content: 'Host: 192.168.1.20\nUser: student10\nSSH key: ~/.ssh/id_rsa' },
-            { id: '2', title: 'Class Team Link', content: 'Meeting: meet.example.com/g10\nRepo: github.com/g10/capstone' },
-            { id: '3', title: 'Locker Combination', content: 'Right 37, Left 9, Right 2' }
+            { id: '2', title: 'Study Group Links', content: 'Meeting: meet.example.com/g10\nRepo: github.com/g10/capstone' },
+            { id: '3', title: 'Locker Combination', content: 'Right 34, Left 12, Right 8' }
         ];
         let currentShares = JSON.parse(localStorage.getItem('vault_shares')) || [
-            { id: '1', item: 'Capstone GitHub Repo', user: 'Wandibba' },
-            { id: '2', item: 'Lab Wi-Fi Login', user: 'Joy' }
+            { id: '1', item: 'Capstone GitHub Repo', user: 'Amina' },
+            { id: '2', item: 'Lab Wi-Fi Login', user: 'Brian' }
         ];
         let currentContacts = JSON.parse(localStorage.getItem('vault_contacts')) || [
             { id: '1', name: 'Dad', relation: 'Parent • Emergency Access (3 Days)' },
-            { id: '2', name: 'Caleb', relation: 'Sibling • View Only (12 Days)' },
-            { id: '3', name: 'Chiama', relation: 'Close Friend • Backup Contact (7 Days)' }
+            { id: '2', name: 'Wanjiru', relation: 'Sibling • View Only (7 Days)' },
+            { id: '3', name: 'Kevin', relation: 'Close Friend • Backup Contact (14 Days)' }
         ];
 
         const colorPalette = ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#14b8a6', '#0ea5e9', '#3b82f6', '#6366f1', '#a855f7'];
@@ -649,9 +571,9 @@
                     currentKeychain = await Keychain.init(pwd);
                     // Example entries for a brand-new vault
                     const examples = [
-                        ['github.com', '1234!'],
-                        ['strathmore.edu', 'Str@thm0re'],
-                        ['spotify.com', 'Spot@fy']
+                        ['github.com', 'Gh!tHub-Demo42'],
+                        ['strathmore.edu', 'Str@th-Demo2026'],
+                        ['spotify.com', 'Sp0tify-Demo#7']
                     ];
                     for (const [d, p] of examples) {
                         await currentKeychain.set(d, p);
@@ -820,6 +742,12 @@
 
         // Initialize clock on load
         document.getElementById('last-login').innerText = localStorage.getItem('last_login') ? localStorage.getItem('last_login').split(',')[0] : 'Never';
+
+        // Module scripts are not global, so expose the functions used by onclick="..." in the HTML
+        Object.assign(window, {
+            unlockVault, lockVault, switchPage, openModal, closeModal, submitModal,
+            togglePassword, editPassword, moveToTrash, restoreFromTrash, deleteGeneric, emptyTrash
+        });
     </script>
 </body>
 </html>

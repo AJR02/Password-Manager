@@ -1,0 +1,27 @@
+{
+  "name": "password-manager",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/AJR02/Password-Manager#readme",
+  "bugs": {
+    "url": "https://github.com/AJR02/Password-Manager/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AJR02/Password-Manager.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "devDependencies": {
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}
